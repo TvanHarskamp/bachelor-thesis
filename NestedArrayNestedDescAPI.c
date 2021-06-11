@@ -3,8 +3,6 @@
 #include <string.h>
 
 enum RCDS_DATA_TYPES {intArray, charArray, floatArray, doubleArray, RCDS_nestedArray};
-#define OPEN_SQUARE_BRACKET -10000
-#define CLOSE_SQUARE_BRACKET -10001
 typedef struct RCDS_nested RCDS_nested;
 
 struct RCDS_nested {
@@ -32,13 +30,6 @@ struct RCDS_array {
     };
 };
 
-//#define RCDS_GEN_ARRAY(RCDS_referenceC,RCDS_kind,RCDS_data...) ({ \
-    struct RCDS_array* RC_array = malloc(sizeof(struct RCDS_array)); \
-    int* valuesArray = malloc(2*sizeof(int)); \
-    valuesArray[0] = 1, valuesArray[1] = 2; \
-    *RC_array = (const struct RCDS_array){.referenceCount = 2, .kind = (int)RCDS_kind##Array, .length = 2, .intArray = valuesArray}; \
-    RC_array; \
-})
 #define RCDS_GEN_ARRAY(RCDS_referenceC,RCDS_kind,RCDS_data...) RCDS_GEN_ARRAY1(RCDS_referenceC,RCDS_kind,RCDS_data)
 #define RCDS_GEN_ARRAY1(RCDS_referenceC,RCDS_kind,RCDS_data...) ({ \
     struct RCDS_array* RC_array = malloc(sizeof(struct RCDS_array)); \
