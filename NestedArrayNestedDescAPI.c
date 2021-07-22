@@ -1,76 +1,118 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
+#include "GeneralAPI.h"
 
-enum RCDS_DATA_TYPES {intArray, charArray, floatArray, doubleArray, RCDS_nestedArray};
-typedef struct RCDS_nested RCDS_nested;
-
-struct RCDS_nested {
-    int kind;
-    size_t length;
-    union {
-        int* intArray;
-        char* charArray;
-        float* floatArray;
-        double* doubleArray;
-        RCDS_nested** RCDS_nestedArray;
-    };
-};
+#define IS_NESTED -1000
+enum RCDS_DATA_TYPES {intArray, charArray, floatArray, doubleArray, nestedArray};
+typedef struct RCDS_array RCDS_array;
 
 struct RCDS_array {
-    int referenceCount;
     int kind;
     size_t length;
     union {
         int* intArray;
-        char* charArray;
-        float* floatArray;
-        double* doubleArray;
-        RCDS_nested** RCDS_nestedArray;
+        RCDS_array** nestedArray;
     };
+    int referenceCount;
 };
 
-#define RCDS_GEN_ARRAY(RCDS_referenceC,RCDS_kind,RCDS_data...) RCDS_GEN_ARRAY1(RCDS_referenceC,RCDS_kind,RCDS_data)
-#define RCDS_GEN_ARRAY1(RCDS_referenceC,RCDS_kind,RCDS_data...) ({ \
-    struct RCDS_array* RC_array = malloc(sizeof(struct RCDS_array)); \
-    if (RCDS_kind##Array == 4) { \
-        size_t size = sizeof((RCDS_kind*[]){RCDS_data}); \
-        RCDS_kind** valuesArray = malloc(size); \
-        memcpy(valuesArray, (RCDS_kind*[]){RCDS_data}, size); \
-        *RC_array = (const struct RCDS_array){.referenceCount = (int)RCDS_referenceC, .kind = (int)RCDS_kind##Array, .length = (size_t)size/sizeof(RCDS_kind*), .RCDS_kind##Array = valuesArray}; \
-    } \
-    else { \
-        size_t size = sizeof((RCDS_kind*[]){RCDS_data}); \
-        RCDS_kind** valuesArray = malloc(size); \
-        memcpy(valuesArray, (RCDS_kind*[]){RCDS_data}, size); \
-        *RC_array = (const struct RCDS_array){.referenceCount = (int)RCDS_referenceC, .kind = (int)RCDS_kind##Array, .length = (size_t)size/sizeof(RCDS_kind*), .RCDS_kind##Array = valuesArray}; \
-    } \
-    RC_array; \
-})
+void RCDS_DELETE_ARRAY(RCDS_array* deleted_array) {
+    if(deleted_array->kind == nestedArray) {
+        for(int i = 0; i < deleted_array->length; i++) {
+            RCDS_DELETE_ARRAY(deleted_array->nestedArray[i]);
+        }
+        free(deleted_array->nestedArray);
+    } else {
+        free(deleted_array->intArray);
+    }
+    free(deleted_array);
+}
 
-#define RCDS_GEN_NESTED_ARRAY(RCDS_kind,RCDS_data...) ({ \
-    size_t size = sizeof((RCDS_kind[]){RCDS_data}); \
-    RCDS_kind* valuesArray = malloc(size); \
-    memcpy(valuesArray, (RCDS_kind[]){RCDS_data}, size); \
-    struct RCDS_nested* RC_array = malloc(sizeof(struct RCDS_nested)); \
-    *RC_array = (const struct RCDS_nested){.kind = (int)RCDS_kind##Array, .length = (size_t)size/sizeof(RCDS_kind), .RCDS_kind##Array = valuesArray}; \
-    RC_array; \
-})
+struct RCDS_array* RCDS_GEN_ARRAY(int referenceC, int kind, size_t arrayLength, size_t valistLength, ...) {
+    struct RCDS_array* RC_array = malloc(sizeof(struct RCDS_array));
+    if (kind == nestedArray) {
+        RCDS_array** valuesArray = malloc(sizeof(RCDS_array*)*arrayLength);
+        va_list vl;
+        va_start(vl, valistLength);
+        for(int i = 0; i < valistLength && i < arrayLength; i++) {
+            valuesArray[i] = va_arg(vl, RCDS_array*);
+        }
+        va_end(vl);
+        *RC_array = (const struct RCDS_array){.kind = kind, .length = arrayLength, .nestedArray = valuesArray, .referenceCount = referenceC};
+    }
+    else {
+        int* valuesArray = malloc(sizeof(int)*arrayLength);
+        va_list vl;
+        va_start(vl, valistLength);
+        for(int i = 0; i < valistLength && i < arrayLength; i++) {
+            valuesArray[i] = va_arg(vl, int);
+        }
+        va_end(vl);
+        *RC_array = (const struct RCDS_array){.kind = kind, .length = arrayLength, .intArray = valuesArray, .referenceCount = referenceC};
+    }
+    return RC_array;
+}
 
-#define RCDS_GEN_EMPTY_ARRAY(RCDS_referenceC,RCDS_kind,RCDS_length) ({ \
-    RCDS_kind* valuesArray = calloc((size_t)RCDS_length, sizeof(RCDS_kind)); \
-    struct RCDS_array* RC_array = malloc(sizeof(struct RCDS_array)); \
-    *RC_array = (const struct RCDS_array){.referenceCount = (int)RCDS_referenceC, .kind = (int)RCDS_kind##Array, .length = (size_t)RCDS_length, .RCDS_kind##Array = valuesArray}; \
-    RC_array; \
-})
+struct RCDS_array* RCDS_GEN_EMPTY_ARRAY(int referenceC, int kind, size_t arrayLength) {
+    struct RCDS_array* RC_array = malloc(sizeof(struct RCDS_array));
+    int* valuesArray = calloc(arrayLength, sizeof(int));
+    *RC_array = (const struct RCDS_array){.referenceCount = referenceC, .kind = kind, .length = arrayLength, .intArray = valuesArray};
+    return RC_array;
+}
 
+int* RCDS_SELECT_ELEMENT(RCDS_array* RC_array, size_t valistLength, ...) {
+    va_list vl;
+    va_start(vl, valistLength);
+    for(;valistLength > 1; valistLength--) {
+        RC_array = RC_array->nestedArray[va_arg(vl, int)];
+    }
+    int* element = RC_array->intArray + va_arg(vl, int);
+    va_end(vl);
+    return element;
+}
+
+void RCDS_PRINT_ARRAY(RCDS_array* printed_array) {
+    if(printed_array->kind == nestedArray) {
+        printf("Array contains:\n");
+        for(size_t i = 0; i < printed_array->length; i++) {
+            printf("\t");
+            RCDS_PRINT_ARRAY(printed_array->nestedArray[i]);
+        }
+        printf("\n");
+    } else {
+        printf("\tvaluesArray: [");
+        for(size_t i = 0; i < printed_array->length-1; i++) {
+            printf("%d, ", printed_array->intArray[i]);
+        }
+        if(printed_array->length-1 >= 0) {
+            printf("%d]\n", printed_array->intArray[printed_array->length-1]);
+        } else {
+            printf("]\n");
+        }
+    }
+}
 
 int main() {
     printf("hello!\n");
-    struct RCDS_array* test1 = RCDS_GEN_ARRAY(2, RCDS_nested, RCDS_GEN_NESTED_ARRAY(int, 1, 2), RCDS_GEN_NESTED_ARRAY(int, 3, 4));
-    //struct RCDS_array* test2 = RCDS_GEN_ARRAY(3, int, 2, 4, 23, -23, -348, 0, 5);
-    //struct RCDS_array* test3 = RCDS_GEN_EMPTY_ARRAY(2, float, 43);
-    printf("referenceC:%d, kind:%d, length:%Iu, data:%d\n", test1->referenceCount, test1->kind, test1->length, test1->RCDS_nestedArray[1]->intArray[0]);
-    //printf("referenceC:%d, kind:%d, length:%Iu, data:%d\n", test2->referenceCount, test2->kind, test2->length, test2->intArray[1]);
+    struct RCDS_array* test1 = RCDS_GEN_ARRAY(2, nestedArray, 2, 2,
+        RCDS_GEN_ARRAY(IS_NESTED, nestedArray, 2, 2,
+            RCDS_GEN_ARRAY(IS_NESTED, intArray, 13, 3, 1, 2, 3),
+            RCDS_GEN_ARRAY(IS_NESTED, intArray, 4, 4, 4, 5, 6, 7)
+        ),
+        RCDS_GEN_ARRAY(IS_NESTED, nestedArray, 3, 3,
+            RCDS_GEN_ARRAY(IS_NESTED, intArray, 5, 5, 8, 9, 10, 11, 12),
+            RCDS_GEN_ARRAY(IS_NESTED, intArray, 2, 2, 13, 14),
+            RCDS_GEN_ARRAY(IS_NESTED, intArray, 1, 1, 15)
+        )
+    );
+    struct RCDS_array* test2 = RCDS_GEN_ARRAY(3, intArray, 10, 5, 23, -23, -348, 0, 5);
+    struct RCDS_array* test3 = RCDS_GEN_EMPTY_ARRAY(2, intArray, 30);
+    RCDS_PRINT_ARRAY(test1);
+    RCDS_PRINT_ARRAY(test2);
+    RCDS_PRINT_ARRAY(test3);
+    printf("\nSelection of [1][0][3] in test1: %d\n", *RCDS_SELECT_ELEMENT(test1, 3, 1, 0, 3));
+    printf("\nSelection of [4] in test2: %d\n", *RCDS_SELECT_ELEMENT(test2, 1, 4));
     return 0;
 }
