@@ -4,9 +4,6 @@
 #include <stdarg.h>
 #include "GeneralAPI.h"
 
-#define IS_NESTED -1000
-enum RCDS_DATA_TYPES {intArray, charArray, floatArray, doubleArray, nestedArray};
-typedef struct RCDS_array RCDS_array;
 typedef struct RCDS_segmentPair RCDS_segmentPair;
 
 struct RCDS_segmentPair {
@@ -141,7 +138,18 @@ struct RCDS_array* RCDS_GEN_EMPTY_ARRAY(int referenceC, int kind, size_t arrayLe
     return RC_array;
 }
 
-int* RCDS_SELECT_ELEMENT(RCDS_array* RC_array, size_t valistLength, ...) {
+void RCDS_INC_RC(RCDS_array* RC_array) {
+    RC_array->referenceCount++;
+}
+
+void RCDS_DEC_RC(RCDS_array* RC_array) {
+    RC_array->referenceCount--;
+    if(RC_array->referenceCount == 0) {
+        RCDS_DELETE_ARRAY(RC_array);
+    }
+}
+
+int RCDS_SELECT_ELEMENT(RCDS_array* RC_array, size_t valistLength, ...) {
     va_list vl;
     va_start(vl, valistLength);
     size_t offset = 0;
@@ -149,7 +157,18 @@ int* RCDS_SELECT_ELEMENT(RCDS_array* RC_array, size_t valistLength, ...) {
         offset = RC_array->segments[i][offset].offset + va_arg(vl, int);
     }
     va_end(vl);
-    return RC_array->intArray + offset;
+    return RC_array->intArray[offset];
+}
+
+void RCDS_MOD_ELEMENT(int value, RCDS_array* RC_array, size_t valistLength, ...) {
+    va_list vl;
+    va_start(vl, valistLength);
+    size_t offset = 0;
+    for(size_t i = 0; i < valistLength; i++) {
+        offset = RC_array->segments[i][offset].offset + va_arg(vl, int);
+    }
+    va_end(vl);
+    RC_array->intArray[offset] = value;
 }
 
 void RCDS_PRINT_ARRAY(RCDS_array* printed_array) {
@@ -199,7 +218,12 @@ int main() {
     RCDS_PRINT_ARRAY(test1);
     RCDS_PRINT_ARRAY(test2);
     RCDS_PRINT_ARRAY(test3);
-    printf("\nSelection of [1][0][3] in test1: %d\n", *RCDS_SELECT_ELEMENT(test1, 3, 1, 0, 3));
-    printf("\nSelection of [4] in test2: %d\n", *RCDS_SELECT_ELEMENT(test2, 1, 4));
+    RCDS_DEC_RC(test3);
+    RCDS_PRINT_ARRAY(test3);
+    RCDS_DEC_RC(test3);
+    //Array should be freed at next print since RC is equal to 0
+    //RCDS_PRINT_ARRAY(test3);
+    printf("\nSelection of [1][0][3] in test1: %d\n", RCDS_SELECT_ELEMENT(test1, 3, 1, 0, 3));
+    printf("\nSelection of [4] in test2: %d\n", RCDS_SELECT_ELEMENT(test2, 1, 4));
     return 0;
 }
