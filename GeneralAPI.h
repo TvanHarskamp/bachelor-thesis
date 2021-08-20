@@ -13,7 +13,7 @@ void RCDS_INC_RC(RCDS_array*);
 void RCDS_DEC_RC(RCDS_array*);
 int RCDS_SELECT_ELEMENT(RCDS_array*, size_t, ...);
 void RCDS_MOD_ELEMENT(int, RCDS_array*, size_t, ...);
-struct RCDS_array* RCDS_SELECT_SUBARRAY(int, RCDS_array*, size_t, ...);
+struct RCDS_array* RCDS_TAKE_SUBARRAY(int, RCDS_array*, size_t, ...);
 void RCDS_PRINT_ARRAY(RCDS_array*);
 
 

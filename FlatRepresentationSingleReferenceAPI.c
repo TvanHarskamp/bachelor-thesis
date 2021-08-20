@@ -18,12 +18,7 @@ struct RCDS_array {
     size_t depth;
     size_t* segmentShape;
     RCDS_segmentPair** segments;
-    union {
-        int* intArray;
-        char* charArray;
-        float* floatArray;
-        double* doubleArray;
-    };
+    int* intArray;
 };
 
 void RCDS_DELETE_ARRAY(RCDS_array* deleted_array) {
@@ -99,7 +94,9 @@ struct RCDS_array* RCDS_GEN_ARRAY(int referenceC, int kind, size_t arrayLength, 
 
         //Free the memory of the lower level arrays
         for(size_t i = 0; i < valistLength; i++) {
-            RCDS_DELETE_ARRAY(tempList[i]);
+            if(tempList[i]->referenceCount == 0) {
+                RCDS_DELETE_ARRAY(tempList[i]);
+            }
         }
         free(tempList);
 
@@ -171,6 +168,39 @@ void RCDS_MOD_ELEMENT(int value, RCDS_array* RC_array, size_t valistLength, ...)
     RC_array->intArray[offset] = value;
 }
 
+struct RCDS_array* RCDS_TAKE_SUBARRAY(int referenceC, RCDS_array* RC_array, size_t valistLength, ...) {
+    int depth = RC_array->depth - valistLength;
+    size_t* segmentShape = malloc(sizeof(size_t)*depth);
+    RCDS_segmentPair** segments = malloc(sizeof(RCDS_segmentPair*)*depth);
+    va_list vl;
+    va_start(vl, valistLength);
+    size_t offset = 0;
+    for(size_t i = 0; i < valistLength; i++) {
+        offset = RC_array->segments[i][offset].offset + va_arg(vl, int);
+    }
+    va_end(vl);
+    printf("offset:%Iu\n", offset);
+    size_t segmentsPerDepth = 1;
+    for(size_t i = 0; i < depth; i++) {
+        segmentShape[i] = segmentsPerDepth;
+        segments[i] = malloc(sizeof(RCDS_segmentPair)*segmentsPerDepth);
+        segmentsPerDepth = 0;
+        for(size_t j = 0; j < segmentShape[i]; j++) {
+            segments[i][j].segment = RC_array->segments[valistLength+i][offset+j].segment;
+            segments[i][j].offset = segmentsPerDepth;
+            segmentsPerDepth += segments[i][j].segment;
+        }
+        offset = RC_array->segments[valistLength+i][offset].offset;
+    }
+    int* valuesArray = malloc(sizeof(int)*segmentsPerDepth);
+    for(size_t i = 0; i < segmentsPerDepth; i++) {
+        valuesArray[i] = RC_array->intArray[i+offset];
+    }
+    struct RCDS_array* RC_subarray = malloc(sizeof(struct RCDS_array));
+    *RC_subarray = (const struct RCDS_array) {.referenceCount = referenceC, .kind = intArray, .length = segmentsPerDepth, .depth = depth, .segmentShape = segmentShape, .segments = segments, .intArray = valuesArray};
+    return RC_subarray;
+}
+
 void RCDS_PRINT_ARRAY(RCDS_array* printed_array) {
     printf("Array:\nreferenceCount:%d, kind:%d, depth:%Iu\n", printed_array->referenceCount, printed_array->kind, printed_array->depth);
     printf("segmentShape:\n[");
@@ -198,32 +228,4 @@ void RCDS_PRINT_ARRAY(RCDS_array* printed_array) {
         printf("%d", printed_array->intArray[printed_array->length-1]);
     }
     printf("]\n\n");
-}
-
-int main() {
-    printf("hello!\n");
-    struct RCDS_array* test1 = RCDS_GEN_ARRAY(2, nestedArray, 2, 2,
-        RCDS_GEN_ARRAY(IS_NESTED, nestedArray, 2, 2,
-            RCDS_GEN_ARRAY(IS_NESTED, intArray, 13, 3, 1, 2, 3),
-            RCDS_GEN_ARRAY(IS_NESTED, intArray, 4, 4, 4, 5, 6, 7)
-        ),
-        RCDS_GEN_ARRAY(IS_NESTED, nestedArray, 3, 3,
-            RCDS_GEN_ARRAY(IS_NESTED, intArray, 5, 5, 8, 9, 10, 11, 12),
-            RCDS_GEN_ARRAY(IS_NESTED, intArray, 2, 2, 13, 14),
-            RCDS_GEN_ARRAY(IS_NESTED, intArray, 1, 1, 15)
-        )
-    );
-    struct RCDS_array* test2 = RCDS_GEN_ARRAY(3, intArray, 10, 5, 23, -23, -348, 0, 5);
-    struct RCDS_array* test3 = RCDS_GEN_EMPTY_ARRAY(2, intArray, 30);
-    RCDS_PRINT_ARRAY(test1);
-    RCDS_PRINT_ARRAY(test2);
-    RCDS_PRINT_ARRAY(test3);
-    RCDS_DEC_RC(test3);
-    RCDS_PRINT_ARRAY(test3);
-    RCDS_DEC_RC(test3);
-    //Array should be freed at next print since RC is equal to 0
-    //RCDS_PRINT_ARRAY(test3);
-    printf("\nSelection of [1][0][3] in test1: %d\n", RCDS_SELECT_ELEMENT(test1, 3, 1, 0, 3));
-    printf("\nSelection of [4] in test2: %d\n", RCDS_SELECT_ELEMENT(test2, 1, 4));
-    return 0;
 }
