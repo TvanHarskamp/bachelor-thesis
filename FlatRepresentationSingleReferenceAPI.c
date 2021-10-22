@@ -21,6 +21,46 @@ struct RCDS_array {
     int* intArray;
 };
 
+size_t RCDS_TOTAL_LENGTH(RCDS_array* RC_array) {
+    return RC_array->length;
+}
+
+size_t RCDS_SUBARRAY_LENGTH(RCDS_array* RC_array, size_t valistLength, ...) {
+    va_list vl;
+    va_start(vl, valistLength);
+    size_t offset = 0;
+    for(size_t i = 0; i < valistLength; i++) {
+        offset = RC_array->segments[i][offset].offset + va_arg(vl, size_t);
+    }
+    va_end(vl);
+    return RC_array->segments[valistLength][offset].segment;
+}
+
+struct RCDS_array* copyArray(RCDS_array* copied_array) {
+    struct RCDS_array* RC_array = malloc(sizeof(struct RCDS_array));
+    RC_array->referenceCount = 1;
+    RC_array->kind = copied_array->kind;
+    RC_array->length = copied_array->length;
+    RC_array->depth = copied_array->depth;
+    size_t* segmentShape = malloc(sizeof(size_t)*RC_array->depth);
+    RCDS_segmentPair** segments = malloc(sizeof(RCDS_segmentPair*)*RC_array->depth);
+    for(size_t i = 0; i < RC_array->depth; i++) {
+        segmentShape[i] = copied_array->segmentShape[i];
+        segments[i] = malloc(sizeof(RCDS_segmentPair)*segmentShape[i]);
+        for(size_t j = 0; j < segmentShape[i]; j++) {
+            segments[i][j] = copied_array->segments[i][j];
+        }
+    }
+    RC_array->segmentShape = segmentShape;
+    RC_array->segments = segments;
+    int* intArray = malloc(sizeof(int)*RC_array->length);
+    for(size_t i = 0; i < RC_array->length; i++) {
+        intArray[i] = copied_array->intArray[i];
+    }
+    RC_array->intArray = intArray;
+    return RC_array;
+}
+
 void RCDS_DELETE_ARRAY(RCDS_array* deleted_array) {
     free(deleted_array->intArray);
     for(int i = 0; i < deleted_array->depth; i++) {
@@ -28,6 +68,7 @@ void RCDS_DELETE_ARRAY(RCDS_array* deleted_array) {
     }
     free(deleted_array->segmentShape);
     free(deleted_array);
+    deleted_array = NULL;
 }
 
 struct RCDS_array* RCDS_GEN_ARRAY(int referenceC, int kind, size_t arrayLength, size_t valistLength, ...) {
@@ -94,9 +135,7 @@ struct RCDS_array* RCDS_GEN_ARRAY(int referenceC, int kind, size_t arrayLength, 
 
         //Free the memory of the lower level arrays
         for(size_t i = 0; i < valistLength; i++) {
-            if(tempList[i]->referenceCount == 0) {
-                RCDS_DELETE_ARRAY(tempList[i]);
-            }
+            RCDS_DEC_RC(tempList[i]);
         }
         free(tempList);
 
@@ -151,35 +190,56 @@ int RCDS_SELECT_ELEMENT(RCDS_array* RC_array, size_t valistLength, ...) {
     va_start(vl, valistLength);
     size_t offset = 0;
     for(size_t i = 0; i < valistLength; i++) {
-        offset = RC_array->segments[i][offset].offset + va_arg(vl, int);
+        offset = RC_array->segments[i][offset].offset + va_arg(vl, size_t);
     }
     va_end(vl);
     return RC_array->intArray[offset];
 }
 
-void RCDS_MOD_ELEMENT(int value, RCDS_array* RC_array, size_t valistLength, ...) {
-    va_list vl;
-    va_start(vl, valistLength);
-    size_t offset = 0;
-    for(size_t i = 0; i < valistLength; i++) {
-        offset = RC_array->segments[i][offset].offset + va_arg(vl, int);
+struct RCDS_array* RCDS_MOD_ELEMENT(int referenceC, int value, RCDS_array* RC_array, size_t valistLength, ...) {
+    if(RC_array->referenceCount == 1) {
+        RC_array->referenceCount = referenceC + 1;
+        va_list vl;
+        va_start(vl, valistLength);
+        size_t offset = 0;
+        for(size_t i = 0; i < valistLength; i++) {
+            offset = RC_array->segments[i][offset].offset + va_arg(vl, size_t);
+        }
+        va_end(vl);
+        RC_array->intArray[offset] = value;
+        return RC_array;
     }
-    va_end(vl);
-    RC_array->intArray[offset] = value;
+    else {
+        struct RCDS_array* new_RC_array = copyArray(RC_array);
+        new_RC_array->referenceCount = referenceC;
+        va_list vl;
+        va_start(vl, valistLength);
+        size_t offset = 0;
+        for(size_t i = 0; i < valistLength; i++) {
+            offset = new_RC_array->segments[i][offset].offset + va_arg(vl, size_t);
+        }
+        va_end(vl);
+        new_RC_array->intArray[offset] = value;
+        return new_RC_array;
+    }
 }
 
 struct RCDS_array* RCDS_TAKE_SUBARRAY(int referenceC, RCDS_array* RC_array, size_t valistLength, ...) {
+    //Determine the depth to allocate the segmentShape and segments.
     int depth = RC_array->depth - valistLength;
     size_t* segmentShape = malloc(sizeof(size_t)*depth);
     RCDS_segmentPair** segments = malloc(sizeof(RCDS_segmentPair*)*depth);
+
+    //Read the arguments of the valist to find the desired subarray.
     va_list vl;
     va_start(vl, valistLength);
     size_t offset = 0;
     for(size_t i = 0; i < valistLength; i++) {
-        offset = RC_array->segments[i][offset].offset + va_arg(vl, int);
+        offset = RC_array->segments[i][offset].offset + va_arg(vl, size_t);
     }
     va_end(vl);
-    printf("offset:%Iu\n", offset);
+
+    //Read part of the segmentShape and segments from the array into the subarray.
     size_t segmentsPerDepth = 1;
     for(size_t i = 0; i < depth; i++) {
         segmentShape[i] = segmentsPerDepth;
@@ -192,13 +252,46 @@ struct RCDS_array* RCDS_TAKE_SUBARRAY(int referenceC, RCDS_array* RC_array, size
         }
         offset = RC_array->segments[valistLength+i][offset].offset;
     }
+
+    //Read part of the values from the array into the subarray.
     int* valuesArray = malloc(sizeof(int)*segmentsPerDepth);
     for(size_t i = 0; i < segmentsPerDepth; i++) {
         valuesArray[i] = RC_array->intArray[i+offset];
     }
+
+    //Construct the subarray and return it.
     struct RCDS_array* RC_subarray = malloc(sizeof(struct RCDS_array));
     *RC_subarray = (const struct RCDS_array) {.referenceCount = referenceC, .kind = intArray, .length = segmentsPerDepth, .depth = depth, .segmentShape = segmentShape, .segments = segments, .intArray = valuesArray};
     return RC_subarray;
+}
+
+struct RCDS_array* RCDS_INSERT_SUBARRAY(int referenceC, RCDS_array* subarray, RCDS_array* RC_array, size_t valistLength, ...) {
+    //The inserted subarray needs to have the same depth as the existing subarray.
+    if(RC_array->depth - valistLength != subarray->depth) {
+        printf("Error: depth must be the same in both subarrays.\n");
+        exit(EXIT_FAILURE);
+    }
+    //Make a new array if the reference count of the top array is >1,
+    //else just use the old array and add referenceC to the reference count.
+    struct RCDS_array* new_RC_array;
+    if(RC_array->referenceCount == 1) {
+        RC_array->referenceCount = referenceC + 1;
+        new_RC_array = RC_array;
+    }
+    else {
+        new_RC_array = copyArray(RC_array);
+        new_RC_array->referenceCount = referenceC;
+    }
+    //Go to the to be replaced subarray.
+    va_list vl;
+    va_start(vl, valistLength);
+    size_t offset = 0;
+    for(size_t i = 0; i < valistLength; i++) {
+        offset = new_RC_array->segments[i][offset].offset + va_arg(vl, size_t);
+    }
+    va_end(vl);
+
+    return new_RC_array;
 }
 
 void RCDS_PRINT_ARRAY(RCDS_array* printed_array) {

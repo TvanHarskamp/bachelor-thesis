@@ -14,6 +14,29 @@ struct RCDS_array {
     int referenceCount;
 };
 
+size_t RCDS_TOTAL_LENGTH(RCDS_array* RC_array) {
+    if(RC_array->kind == nestedArray) {
+        size_t totalLength = 0;
+        for(size_t i = 0; i < RC_array->length; i++) {
+            totalLength += RCDS_TOTAL_LENGTH(RC_array->nestedArray[i]);
+        }
+        return totalLength;
+    }
+    else {
+        return RC_array->length;
+    }
+}
+
+size_t RCDS_SUBARRAY_LENGTH(RCDS_array* RC_array, size_t valistLength, ...) {
+    va_list vl;
+    va_start(vl, valistLength);
+    for(size_t i = 0; i < valistLength; i++) {
+        RC_array = RC_array->nestedArray[va_arg(vl, size_t)];
+    }
+    va_end(vl);
+    return RC_array->length;
+}
+
 void RCDS_DELETE_ARRAY(RCDS_array* deleted_array) {
     if(deleted_array->kind == nestedArray) {
         free(deleted_array->nestedArray);
