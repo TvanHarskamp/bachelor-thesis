@@ -16,7 +16,8 @@ void RCDS_DEC_RC(RCDS_array*);
 int RCDS_SELECT_ELEMENT(RCDS_array*, size_t, ...);
 struct RCDS_array* RCDS_MOD_ELEMENT(int, int, RCDS_array*, size_t, ...);
 struct RCDS_array* RCDS_TAKE_SUBARRAY(int, RCDS_array*, size_t, ...);
-struct RCDS_array* RCDS_INSERT_SUBARRAY(int, RCDS_array*, RCDS_array*, size_t, ...);
+struct RCDS_array* RCDS_SWAP_SUBARRAYS(int, RCDS_array*, size_t, ...);
+size_t RCDS_COUNT_ELEMENTS(RCDS_array*, int);
 void RCDS_PRINT_ARRAY(RCDS_array*);
 
 

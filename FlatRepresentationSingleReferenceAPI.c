@@ -72,6 +72,9 @@ void RCDS_DELETE_ARRAY(RCDS_array* deleted_array) {
 }
 
 struct RCDS_array* RCDS_GEN_ARRAY(int referenceC, int kind, size_t arrayLength, size_t valistLength, ...) {
+    if(referenceC <= 0) {
+        return NULL;
+    }
     struct RCDS_array* RC_array = malloc(sizeof(struct RCDS_array));
     if(kind == nestedArray) {
         //Check for input errors
@@ -162,6 +165,9 @@ struct RCDS_array* RCDS_GEN_ARRAY(int referenceC, int kind, size_t arrayLength, 
 }
 
 struct RCDS_array* RCDS_GEN_EMPTY_ARRAY(int referenceC, int kind, size_t arrayLength) {
+    if(referenceC <= 0) {
+        return NULL;
+    }
     struct RCDS_array* RC_array = malloc(sizeof(struct RCDS_array));
     size_t* segmentShape = malloc(sizeof(size_t));
     segmentShape[0] = 1;
@@ -197,6 +203,9 @@ int RCDS_SELECT_ELEMENT(RCDS_array* RC_array, size_t valistLength, ...) {
 }
 
 struct RCDS_array* RCDS_MOD_ELEMENT(int referenceC, int value, RCDS_array* RC_array, size_t valistLength, ...) {
+    if(referenceC <= 0) {
+        return NULL;
+    }
     if(RC_array->referenceCount == 1) {
         RC_array->referenceCount = referenceC + 1;
         va_list vl;
@@ -225,6 +234,9 @@ struct RCDS_array* RCDS_MOD_ELEMENT(int referenceC, int value, RCDS_array* RC_ar
 }
 
 struct RCDS_array* RCDS_TAKE_SUBARRAY(int referenceC, RCDS_array* RC_array, size_t valistLength, ...) {
+    if(referenceC <= 0) {
+        return NULL;
+    }
     //Determine the depth to allocate the segmentShape and segments.
     int depth = RC_array->depth - valistLength;
     size_t* segmentShape = malloc(sizeof(size_t)*depth);
@@ -265,11 +277,9 @@ struct RCDS_array* RCDS_TAKE_SUBARRAY(int referenceC, RCDS_array* RC_array, size
     return RC_subarray;
 }
 
-struct RCDS_array* RCDS_INSERT_SUBARRAY(int referenceC, RCDS_array* subarray, RCDS_array* RC_array, size_t valistLength, ...) {
-    //The inserted subarray needs to have the same depth as the existing subarray.
-    if(RC_array->depth - valistLength != subarray->depth) {
-        printf("Error: depth must be the same in both subarrays.\n");
-        exit(EXIT_FAILURE);
+struct RCDS_array* RCDS_SWAP_SUBARRAYS(int referenceC, RCDS_array* RC_array, size_t valistLength, ...) {
+    if(referenceC <= 0 || valistLength%2 != 0) {
+        return NULL;
     }
     //Make a new array if the reference count of the top array is >1,
     //else just use the old array and add referenceC to the reference count.
@@ -282,16 +292,145 @@ struct RCDS_array* RCDS_INSERT_SUBARRAY(int referenceC, RCDS_array* subarray, RC
         new_RC_array = copyArray(RC_array);
         new_RC_array->referenceCount = referenceC;
     }
-    //Go to the to be replaced subarray.
+    //Go to the to be swapped subarrays.
     va_list vl;
     va_start(vl, valistLength);
-    size_t offset = 0;
-    for(size_t i = 0; i < valistLength; i++) {
-        offset = new_RC_array->segments[i][offset].offset + va_arg(vl, size_t);
+    size_t offset1 = 0;
+    size_t offset2 = 0;
+    for(size_t i = 0; i < valistLength/2; i++) {
+        offset1 = new_RC_array->segments[i][offset1].offset + va_arg(vl, size_t);
+    }
+    for(size_t i = 0; i < valistLength/2; i++) {
+        offset2 = new_RC_array->segments[i][offset2].offset + va_arg(vl, size_t);
     }
     va_end(vl);
-
+    //Make sure offset1 < offset2.
+    if(offset1 > offset2) {
+        size_t help = offset1;
+        offset1 = offset2;
+        offset2 = help;
+    }
+    //Swap the two subarrays in the segments part.
+    size_t subarrayLength1 = 1;
+    size_t subarrayLength2 = 1;
+    size_t lengthDifference = 0;
+    size_t newOffset1;
+    size_t newOffset2;
+    size_t newOffsetDifference;
+    size_t newSubarrayLength1;
+    size_t newSubarrayLength2;
+    size_t newLengthDifference;
+    for(size_t i = valistLength/2; i < new_RC_array->depth; i++) {
+        newOffset1 = new_RC_array->segments[i][offset1].offset;
+        newOffset2 = new_RC_array->segments[i][offset2].offset;
+        newOffsetDifference = newOffset2 - newOffset1;
+        newSubarrayLength1 = 0;
+        newSubarrayLength2 = 0;
+        RCDS_segmentPair* tempArray;
+        if(lengthDifference >= 0) {
+            tempArray = malloc(sizeof(RCDS_segmentPair)*subarrayLength1);
+            //Put the first subarray in a temporary array.
+            for(size_t j = 0; j < subarrayLength1; j++) {
+                tempArray[j] = new_RC_array->segments[i][offset1+j];
+                newSubarrayLength1 += tempArray[j].segment;
+            }
+            //Move the second subarray into the first one.
+            for(size_t j = 0; j < subarrayLength2; j++) {
+                new_RC_array->segments[i][offset1+j] = new_RC_array->segments[i][offset2+j];
+                newSubarrayLength2 += new_RC_array->segments[i][offset1+j].segment;
+                new_RC_array->segments[i][offset1+j].offset -= newOffsetDifference;
+            }
+            newLengthDifference = newSubarrayLength1 - newSubarrayLength2;
+            //Move the elements in between the two subarrays.
+            for(size_t j = offset1+subarrayLength2; j < offset2-lengthDifference; j++) {
+                new_RC_array->segments[i][j] = new_RC_array->segments[i][lengthDifference+j];
+                new_RC_array->segments[i][j].offset += newSubarrayLength2 - newSubarrayLength1;
+            }
+            //Fix the offsets in the the temporary array and put it in the second subarray.
+            for(size_t j = 0; j < subarrayLength1; j++) {
+                tempArray[j].offset += newOffsetDifference - newLengthDifference;
+                new_RC_array->segments[i][offset2-lengthDifference+j] = tempArray[j];
+            }
+        }
+        else {
+            tempArray = malloc(sizeof(RCDS_segmentPair)*subarrayLength2);
+            //Put the second subarray in a temporary array.
+            for(size_t j = 0; j < subarrayLength2; j++) {
+                tempArray[j] = new_RC_array->segments[i][offset2+j];
+                newSubarrayLength2 += tempArray[j].segment;
+                tempArray[j].offset -= newOffsetDifference;
+            }
+            //Move the first subarray into the second one.
+            for(size_t j = 0; j < subarrayLength1; j++) {
+                new_RC_array->segments[i][offset2-lengthDifference+j] = new_RC_array->segments[i][offset1+j];
+                newSubarrayLength1 += new_RC_array->segments[i][offset2-lengthDifference+j].segment;
+            }
+            newLengthDifference = newSubarrayLength1 - newSubarrayLength2;
+            //Move the elements in between the two subarrays.
+            for(size_t j = offset2-lengthDifference-1 ; j >= offset1+subarrayLength2; j--) {
+                new_RC_array->segments[i][j] = new_RC_array->segments[i][lengthDifference+j];
+                new_RC_array->segments[i][j].offset += newSubarrayLength2 - newSubarrayLength1;
+            }
+            //Put the temporary array in the first subarray.
+            for(size_t j = 0; j < subarrayLength2; j++) {
+                new_RC_array->segments[i][offset1+j] = tempArray[j];
+            }
+            //Fix the offsets in the subarray that was moved further into the array.
+            for(size_t j = 0; j < subarrayLength1; j++) {
+                new_RC_array->segments[i][offset2-lengthDifference+j].offset += newOffsetDifference - newLengthDifference;
+            }
+        }
+        offset1 = newOffset1;
+        offset2 = newOffset2;
+        subarrayLength1 = newSubarrayLength1;
+        subarrayLength2 = newSubarrayLength2;
+        lengthDifference = newLengthDifference;
+        free(tempArray);
+    }
+    //Swap the elements in the values array.
+    int* tempArray;
+    if(lengthDifference >= 0) {
+        tempArray = malloc(sizeof(int)*subarrayLength1);
+        for(size_t j = 0; j < subarrayLength1; j++) {
+            tempArray[j] = new_RC_array->intArray[offset1+j];
+        }
+        for(size_t j = 0; j < subarrayLength2; j++) {
+            new_RC_array->intArray[offset1+j] = new_RC_array->intArray[offset2+j];
+        }
+        for(size_t j = offset1+subarrayLength2; j < offset2-lengthDifference; j++) {
+            new_RC_array->intArray[j] = new_RC_array->intArray[lengthDifference+j];
+        }
+        for(size_t j = 0; j < subarrayLength1; j++) {
+            new_RC_array->intArray[offset2-lengthDifference+j] = tempArray[j];
+        }
+    }
+    else {
+        tempArray = malloc(sizeof(int)*subarrayLength2);
+        for(size_t j = 0; j < subarrayLength2; j++) {
+            tempArray[j] = new_RC_array->intArray[offset2+j];
+        }
+        for(size_t j = 0; j < subarrayLength1; j++) {
+            new_RC_array->intArray[offset2+j] = new_RC_array->intArray[offset1+j];
+        }
+        for(size_t j = offset2-lengthDifference-1; j >= offset1+subarrayLength2; j--) {
+            new_RC_array->intArray[j] = new_RC_array->intArray[lengthDifference+j];
+        }
+        for(size_t j = 0; j < subarrayLength2; j++) {
+            new_RC_array->intArray[offset1+j] = tempArray[j];
+        }
+    }
+    free(tempArray);
     return new_RC_array;
+}
+
+size_t RCDS_COUNT_ELEMENTS(RCDS_array* RC_array, int element) {
+    size_t count = 0;
+    for(size_t i = 0; i < RC_array->length; i++) {
+        if(RC_array->intArray[i] == element) {
+            count++;
+        }
+    }
+    return count;
 }
 
 void RCDS_PRINT_ARRAY(RCDS_array* printed_array) {

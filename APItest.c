@@ -26,7 +26,8 @@ int main() {
         )
     );
     RCDS_PRINT_ARRAY(test1);
-    struct RCDS_array* test6 = flipTwoPartArray(2, test1, 0, 1);
+    struct RCDS_array* test6 = RCDS_SWAP_SUBARRAYS(2, test1, 2, 0, 1);
+    //struct RCDS_array* test6 = flipTwoPartArray(2, test1, 0, 1);
     RCDS_PRINT_ARRAY(test6);
     RCDS_DEC_RC(test6);
     printf("\nSelection of [1][0][2] in test6: %d\n", RCDS_SELECT_ELEMENT(test6, 3, 1, 0, 2));

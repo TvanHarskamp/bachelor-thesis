@@ -30,11 +30,12 @@ size_t RCDS_TOTAL_LENGTH(RCDS_array* RC_array) {
 size_t RCDS_SUBARRAY_LENGTH(RCDS_array* RC_array, size_t valistLength, ...) {
     va_list vl;
     va_start(vl, valistLength);
+    struct RCDS_array* subarrayPointer = RC_array;
     for(size_t i = 0; i < valistLength; i++) {
-        RC_array = RC_array->nestedArray[va_arg(vl, size_t)];
+        subarrayPointer = subarrayPointer->nestedArray[va_arg(vl, size_t)];
     }
     va_end(vl);
-    return RC_array->length;
+    return subarrayPointer->length;
 }
 
 struct RCDS_array* recursivelyCopyArray(RCDS_array* copied_array) {
@@ -75,8 +76,11 @@ void RCDS_DELETE_ARRAY(RCDS_array* deleted_array) {
 }
 
 struct RCDS_array* RCDS_GEN_ARRAY(int referenceC, int kind, size_t arrayLength, size_t valistLength, ...) {
+    if(referenceC <= 0) {
+        return NULL;
+    }
     struct RCDS_array* RC_array = malloc(sizeof(struct RCDS_array));
-    if (kind == nestedArray) {
+    if(kind == nestedArray) {
         RCDS_array** valuesArray = malloc(sizeof(RCDS_array*)*arrayLength);
         va_list vl;
         va_start(vl, valistLength);
@@ -109,6 +113,9 @@ struct RCDS_array* RCDS_GEN_ARRAY(int referenceC, int kind, size_t arrayLength, 
 }
 
 struct RCDS_array* RCDS_GEN_EMPTY_ARRAY(int referenceC, int kind, size_t arrayLength) {
+    if(referenceC <= 0) {
+        return NULL;
+    }
     struct RCDS_array* RC_array = malloc(sizeof(struct RCDS_array));
     int* valuesArray = calloc(arrayLength, sizeof(int));
     *RC_array = (const struct RCDS_array){.referenceCount = referenceC, .kind = kind, .length = arrayLength, .intArray = valuesArray};
@@ -133,41 +140,46 @@ void RCDS_DEC_RC(RCDS_array* RC_array) {
 int RCDS_SELECT_ELEMENT(RCDS_array* RC_array, size_t valistLength, ...) {
     va_list vl;
     va_start(vl, valistLength);
+    struct RCDS_array* subarrayPointer = RC_array;
     for(;valistLength > 1; valistLength--) {
-        RC_array = RC_array->nestedArray[va_arg(vl, size_t)];
+        subarrayPointer = subarrayPointer->nestedArray[va_arg(vl, size_t)];
     }
-    int element = RC_array->intArray[va_arg(vl, size_t)];
+    int element = subarrayPointer->intArray[va_arg(vl, size_t)];
     va_end(vl);
     return element;
 }
 
 struct RCDS_array* RCDS_MOD_ELEMENT(int referenceC, int value, RCDS_array* RC_array, size_t valistLength, ...) {
+    if(referenceC <= 0) {
+        return NULL;
+    }
+    //Make a new array if the reference count of the top array is >1,
+    //else just use the old array and add referenceC to the reference count.
+    struct RCDS_array* new_RC_array;
     if(RC_array->referenceCount == 1) {
         RC_array->referenceCount = referenceC + 1;
-        va_list vl;
-        va_start(vl, valistLength);
-        for(;valistLength > 1; valistLength--) {
-            RC_array = RC_array->nestedArray[va_arg(vl, size_t)];
-        }
-        RC_array->intArray[va_arg(vl, size_t)] = value;
-        va_end(vl);
-        return RC_array;
+        new_RC_array = RC_array;
     }
     else {
-        struct RCDS_array* new_RC_array = recursivelyCopyArray(RC_array);
+        new_RC_array = recursivelyCopyArray(RC_array);
         new_RC_array->referenceCount = referenceC;
-        va_list vl;
-        va_start(vl, valistLength);
-        for(;valistLength > 1; valistLength--) {
-            new_RC_array = new_RC_array->nestedArray[va_arg(vl, size_t)];
-        }
-        new_RC_array->intArray[va_arg(vl, size_t)] = value;
-        va_end(vl);
-        return new_RC_array;
     }
+    //Go to the element and modify it.
+    struct RCDS_array* subarrayPointer = new_RC_array;
+    va_list vl;
+    va_start(vl, valistLength);
+    for(;valistLength > 1; valistLength--) {
+        subarrayPointer = subarrayPointer->nestedArray[va_arg(vl, size_t)];
+    }
+    subarrayPointer->intArray[va_arg(vl, size_t)] = value;
+    va_end(vl);
+    return new_RC_array;
 }
 
 struct RCDS_array* RCDS_TAKE_SUBARRAY(int referenceC, RCDS_array* RC_array, size_t valistLength, ...) {
+    if(referenceC <= 0) {
+        return NULL;
+    }
     va_list vl;
     va_start(vl, valistLength);
     for(;valistLength > 0; valistLength--) {
@@ -180,42 +192,91 @@ struct RCDS_array* RCDS_TAKE_SUBARRAY(int referenceC, RCDS_array* RC_array, size
     return subarray;
 }
 
-struct RCDS_array* RCDS_INSERT_SUBARRAY(int referenceC, RCDS_array* subarray, RCDS_array* RC_array, size_t valistLength, ...) {
+struct RCDS_array* RCDS_SWAP_SUBARRAYS(int referenceC, RCDS_array* RC_array, size_t valistLength, ...) {
+    if(referenceC <= 0 || valistLength%2 != 0) {
+        return NULL;
+    }
+    //Make a new array if the reference count of the top array is >1,
+    //else just use the old array and add referenceC to the reference count.
+    struct RCDS_array* new_RC_array;
     if(RC_array->referenceCount == 1) {
         RC_array->referenceCount = referenceC + 1;
-        va_list vl;
-        va_start(vl, valistLength);
-        for(;valistLength > 1; valistLength--) {
-            RC_array = RC_array->nestedArray[va_arg(vl, size_t)];
-        }
-        if(subarray->referenceCount == 1) {
-            RC_array->nestedArray[va_arg(vl, size_t)] = subarray;
-            subarray->referenceCount = IS_NESTED;
-        }
-        else {
-            RC_array->nestedArray[va_arg(vl, size_t)] = recursivelyCopyArray(subarray);
-        }
-        va_end(vl);
-        return RC_array;
+        new_RC_array = RC_array;
     }
     else {
-        struct RCDS_array* new_RC_array = recursivelyCopyArray(RC_array);
+        new_RC_array = recursivelyCopyArray(RC_array);
         new_RC_array->referenceCount = referenceC;
-        va_list vl;
-        va_start(vl, valistLength);
-        for(;valistLength > 1; valistLength--) {
-            new_RC_array = new_RC_array->nestedArray[va_arg(vl, size_t)];
-        }
-        if(subarray->referenceCount == 1) {
-            new_RC_array->nestedArray[va_arg(vl, size_t)] = subarray;
-            subarray->referenceCount = IS_NESTED;
-        }
-        else {
-            new_RC_array->nestedArray[va_arg(vl, size_t)] = recursivelyCopyArray(subarray);
-        }
-        va_end(vl);
-        return new_RC_array;
     }
+    //Go to the to be swapped subarrays.
+    struct RCDS_array* subarrayPointer1 = new_RC_array;
+    struct RCDS_array* subarrayPointer2 = new_RC_array;
+    va_list vl;
+    va_start(vl, valistLength);
+    for(size_t i = 0; i < valistLength/2-1; i++) {
+        subarrayPointer1 = subarrayPointer1->nestedArray[va_arg(vl, size_t)];
+    }
+    size_t index1 = va_arg(vl, size_t);
+    for(size_t i = 0; i < valistLength/2-1; i++) {
+        subarrayPointer2 = subarrayPointer2->nestedArray[va_arg(vl, size_t)];
+    }
+    size_t index2 = va_arg(vl, size_t);
+    va_end(vl);
+    //Swap the two subarrays.
+    struct RCDS_array* buffer = subarrayPointer1->nestedArray[index1];
+    subarrayPointer1->nestedArray[index1] = subarrayPointer2->nestedArray[index2];
+    subarrayPointer2->nestedArray[index2] = buffer;
+    return new_RC_array;
+}
+
+struct RCDS_array* insertSubarray(int referenceC, RCDS_array* subarray, RCDS_array* RC_array, size_t valistLength, ...) {
+    if(referenceC <= 0) {
+        return NULL;
+    }
+    //Make a new array if the reference count of the top array is >1,
+    //else just use the old array and add referenceC to the reference count.
+    struct RCDS_array* new_RC_array;
+    if(RC_array->referenceCount == 1) {
+        RC_array->referenceCount = referenceC + 1;
+        new_RC_array = RC_array;
+    }
+    else {
+        new_RC_array = recursivelyCopyArray(RC_array);
+        new_RC_array->referenceCount = referenceC;
+    }
+    //Go to the to be replaced subarray.
+    struct RCDS_array* subarrayPointer = new_RC_array;
+    va_list vl;
+    va_start(vl, valistLength);
+    for(;valistLength > 1; valistLength--) {
+        subarrayPointer = subarrayPointer->nestedArray[va_arg(vl, size_t)];
+    }
+    //Replace the subarray with the new one, minding the new one's reference count.
+    if(subarray->referenceCount == 1) {
+        subarrayPointer->nestedArray[va_arg(vl, size_t)] = subarray;
+        subarray->referenceCount = IS_NESTED;
+    }
+    else {
+        subarrayPointer->nestedArray[va_arg(vl, size_t)] = recursivelyCopyArray(subarray);
+    }
+    va_end(vl);
+    return new_RC_array;
+}
+
+size_t RCDS_COUNT_ELEMENTS(RCDS_array* RC_array, int element) {
+    size_t count = 0;
+    if(RC_array->kind == nestedArray) {
+        for(size_t i = 0; i < RC_array->length; i++) {
+            count += RCDS_COUNT_ELEMENTS(RC_array->nestedArray[i], element);
+        }
+    }
+    else {
+        for(size_t i = 0; i < RC_array->length; i++) {
+            if(RC_array->intArray[i] == element) {
+                count++;
+            }
+        }
+    }
+    return count;
 }
 
 void RCDS_PRINT_ARRAY(RCDS_array* printed_array) {
