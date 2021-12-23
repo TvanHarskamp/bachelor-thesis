@@ -86,6 +86,7 @@ int main() {
     double time_spent = 0.0;
     clock_t begin = clock();
     size_t elementCount = RCDS_COUNT_ELEMENTS(testarray, 0);
+    RCDS_DEC_RC(testarray);
     printf("Number of zeros: %Iu\n", elementCount);
     clock_t end = clock();
     time_spent += (double)(end - begin) / CLOCKS_PER_SEC;

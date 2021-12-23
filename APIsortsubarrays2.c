@@ -1,14 +1,15 @@
 //Choose the API you want to use here using one of the includes:
-//#include "NestedRepresentationSingleReferenceAPI.c"
-#include "NestedRepresentationNestedReferenceAPI.c"
+#include "NestedRepresentationSingleReferenceAPI.c"
+//#include "NestedRepresentationNestedReferenceAPI.c"
 //#include "FlatRepresentationSingleReferenceAPI.c"
 #include <time.h>
 #include <unistd.h>
+#include <math.h>
 
 int compareIndexes(RCDS_array* array, size_t index1, size_t index2) {
     //0 means index1 is smaller or equal, 1 means index1 bigger
-    if(RCDS_SELECT_ELEMENT(array, 6, (size_t)index1/40%2, (size_t)index1/20%2, (size_t)index1/10%2, (size_t)index1%10, (size_t)0, (size_t)0)
-    <= RCDS_SELECT_ELEMENT(array, 6, (size_t)index2/40%2, (size_t)index2/20%2, (size_t)index2/10%2, (size_t)index2%10, (size_t)0, (size_t)0)) {
+    if(RCDS_SELECT_ELEMENT(array, 10, (size_t)index1/640%2, (size_t)index1/320%2, (size_t)index1/160%2, (size_t)index1/80%2, (size_t)index1/40%2, (size_t)index1/20%2, (size_t)index1/10%2, (size_t)index1%10, (size_t)0, (size_t)0)
+    <= RCDS_SELECT_ELEMENT(array, 10, (size_t)index2/640%2, (size_t)index2/320%2, (size_t)index2/160%2, (size_t)index2/80%2, (size_t)index2/40%2, (size_t)index2/20%2, (size_t)index2/10%2, (size_t)index2%10, (size_t)0, (size_t)0)) {
         return 0;
     } else {
         return 1;
@@ -19,8 +20,8 @@ struct RCDS_array* bubblesortOnce(RCDS_array* array, size_t length) {
     struct RCDS_array* helparray;
     for(size_t i = 0; i < length-1; i++) {
         if (compareIndexes(array, i, i+1) != 0) {
-            helparray = RCDS_SWAP_SUBARRAYS(1, array, 8, (size_t)i/40%2, (size_t)i/20%2, (size_t)i/10%2, (size_t)i%10,
-                (size_t)(i+1)/40%2, (size_t)(i+1)/20%2, (size_t)(i+1)/10%2, (size_t)(i+1)%10);
+            helparray = RCDS_SWAP_SUBARRAYS(1, array, 16, (size_t)i/640%2, (size_t)i/320%2, (size_t)i/160%2, (size_t)i/80%2, (size_t)i/40%2, (size_t)i/20%2, (size_t)i/10%2, (size_t)i%10,
+                (size_t)(i+1)/640%2, (size_t)(i+1)/320%2, (size_t)(i+1)/160%2, (size_t)(i+1)/80%2, (size_t)(i+1)/40%2, (size_t)(i+1)/20%2, (size_t)(i+1)/10%2, (size_t)(i+1)%10);
             RCDS_DEC_RC(array);
             array = helparray;
         }
@@ -92,15 +93,15 @@ struct RCDS_array* gen_testarray2(RCDS_array* RC_array, size_t depth) {
 }
 
 int main() {
-    size_t depth = 3;
-    struct RCDS_array* testarray = gen_testarray2(gen_testarray1(10, (size_t)pow(2, depth)), depth);
-    RCDS_PRINT_ARRAY(testarray);
+    size_t depth = 7;
     double time_spent = 0.0;
+    struct RCDS_array* testarray = gen_testarray2(gen_testarray1(10, (size_t)pow(2, depth)), depth);
+    //RCDS_PRINT_ARRAY(testarray);
     clock_t begin = clock();
     struct RCDS_array* sortedarray = bubblesort(testarray, (size_t)pow(2, depth)*10);
     clock_t end = clock();
     time_spent += (double)(end - begin) / CLOCKS_PER_SEC;
     printf("The execution time is %f seconds.\n", time_spent);
-    RCDS_PRINT_ARRAY(sortedarray);
+    //RCDS_PRINT_ARRAY(sortedarray);
     return 0;
 }
